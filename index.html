@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>現場キーボックス帳</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="キーボックス帳">
+<meta name="theme-color" content="#2f4a66">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+/* Layout: one narrow column like a clipboard; mansion list → mansion detail. */
+:root{
+  --bg:#eef0f2; --panel:#ffffff; --ink:#1b2430; --muted:#5d6876; --line:#d4d9df;
+  --accent:#e0a100; --accent-ink:#1b2430; --steel:#2f4a66; --danger:#b3261e; --ok:#2e7d4f; --code-bg:#f5f2e6;
+  --f-body:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --f-code:ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12171d; --panel:#1b232c; --ink:#e7ebef; --muted:#9aa6b3; --line:#2c3743;
+  --accent:#f2b51c; --accent-ink:#12171d; --steel:#8fb3d9; --danger:#ff8a80; --ok:#7fd1a0; --code-bg:#262a22; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171d; --panel:#1b232c; --ink:#e7ebef; --muted:#9aa6b3; --line:#2c3743;
+  --accent:#f2b51c; --accent-ink:#12171d; --steel:#8fb3d9; --danger:#ff8a80; --ok:#7fd1a0; --code-bg:#262a22; color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6}
+[hidden]{display:none!important}
+.wrap{max-width:720px;margin:0 auto;padding-block:16px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px}
+header.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-weight:900;font-size:1.3rem;margin:0;letter-spacing:.02em;display:flex;align-items:center;gap:10px}
+h1 .tag{background:var(--accent);color:var(--accent-ink);font-size:.7rem;padding:2px 8px;border-radius:3px;letter-spacing:.08em}
+h2{font-weight:900;font-size:1.2rem;margin:0;text-wrap:balance;min-width:0;overflow-wrap:anywhere}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 14px;min-height:40px}
+button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.5}
+button.primary{background:var(--steel);border-color:var(--steel);color:var(--panel);font-weight:700}
+button.ghost{background:transparent;border-color:transparent;color:var(--steel);padding:8px 10px}
+button.danger{color:var(--danger);border-color:var(--danger);background:transparent}
+button.danger.armed{background:var(--danger);color:var(--panel)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.between{justify-content:space-between}
+.sync{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted);flex-wrap:wrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.dot.ok{background:var(--ok)} .dot.off{background:var(--accent)} .dot.err{background:var(--danger)}
+.search{width:100%;font:inherit;font-size:16px;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.chip{flex:none;min-height:32px;padding:4px 12px;border-radius:16px;font-size:.85rem}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.list{display:flex;flex-direction:column;gap:8px}
+.bcard{display:flex;flex-direction:column;gap:2px;text-align:left;padding:12px 14px;border-radius:8px;background:var(--panel);border:1px solid var(--line);width:100%}
+.bcard .name{font-weight:700;font-size:1.05rem;overflow-wrap:anywhere}
+.bcard .meta{color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
+.pend{display:inline-block;font-size:.7rem;padding:0 6px;border-radius:3px;background:var(--accent);color:var(--accent-ink);margin-left:6px;vertical-align:2px;font-weight:700}
+.empty{padding:28px 16px;text-align:center;color:var(--muted);border:2px dashed var(--line);border-radius:8px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.label{font-size:.72rem;letter-spacing:.1em;color:var(--muted);font-weight:700}
+.field{display:flex;flex-direction:column;gap:2px;min-width:0}
+.text{overflow-wrap:anywhere}
+a{color:var(--steel)}
+.secret{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.code{font-family:var(--f-code);font-weight:600;font-size:1.3rem;letter-spacing:.1em;background:var(--code-bg);border:1px solid var(--line);border-radius:4px;padding:2px 10px;min-width:6ch;overflow-wrap:anywhere}
+.code.masked{color:var(--muted)}
+.secret button{min-height:36px;padding:6px 10px;font-size:.85rem}
+form{display:flex;flex-direction:column;gap:12px}
+form label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:700}
+form input,form textarea{font:inherit;font-size:16px;font-weight:500;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);width:100%}
+form input.mono{font-family:var(--f-code);letter-spacing:.06em}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:420px){.two{grid-template-columns:1fr}}
+.hint{font-size:.8rem;color:var(--muted)}
+.err{color:var(--danger);font-size:.85rem}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:20px;font-size:.9rem;z-index:10;max-width:calc(100% - 32px)}
+ol.steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
+code{font-family:var(--f-code);background:var(--code-bg);padding:0 4px;border-radius:3px;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+// ===== 保存キー =====
+const K_CONF='kb-conf', K_CACHE='kb-cache', K_OUT='kb-outbox', K_SYNC='kb-synced';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const get=(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v);}catch(e){return d;}};
+const put=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){toast('この端末に保存できませんでした');}};
+
+let conf=get(K_CONF,null);        // {url, token}
+let server=get(K_CACHE,[]);       // 最後に表から取得した行
+let outbox=get(K_OUT,[]);         // 未送信の変更 [{op:'save',rec}|{op:'delete',id}]
+let syncedAt=get(K_SYNC,null);
+let syncState='idle';             // idle | syncing | offline | error
+let syncMsg='';
+let view={page:conf?'list':'setup',id:null,q:'',client:''};
+let revealed=new Set(), timers={};
+
+// 表の行 + 未送信の変更 = 画面に出すデータ
+function rows(){
+  const m=new Map(server.map(r=>[r.id,{...r}]));
+  outbox.forEach(o=>{ if(o.op==='save') m.set(o.rec.id,{...o.rec,_pending:true}); else m.delete(o.id); });
+  return [...m.values()];
+}
+const find=id=>rows().find(r=>r.id===id);
+
+function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,2400);}
+
+// ===== 表（Apps Script）との通信 =====
+async function api(params){
+  const ctl=new AbortController(); const tm=setTimeout(()=>ctl.abort(),15000);
+  try{
+    const res=await fetch(conf.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...params,token:conf.token}),signal:ctl.signal,redirect:'follow'});
+    const j=await res.json();
+    if(!j.ok) throw Object.assign(new Error(j.error==='auth'?'合言葉が表の設定と一致しません':(j.error||'表の更新に失敗しました')),{fatal:j.error==='auth'});
+    return j;
+  } finally{clearTimeout(tm);}
+}
+
+let syncing=null;
+function sync(){ if(!conf) return Promise.resolve(); if(syncing) return syncing; syncing=doSync().finally(()=>{syncing=null;}); return syncing; }
+async function doSync(){
+  if(!navigator.onLine){syncState='offline';paintSync();return;}
+  syncState='syncing';paintSync();
+  try{
+    while(outbox.length){                       // 未送信の変更を順に送る
+      const o=outbox[0];
+      await api(o.op==='save'?{action:'save',record:o.rec}:{action:'delete',id:o.id});
+      outbox.shift(); put(K_OUT,outbox);
+    }
+    const j=await api({action:'getAll'});
+    server=j.rows||[]; put(K_CACHE,server);
+    syncedAt=new Date().toISOString(); put(K_SYNC,syncedAt);
+    syncState='idle'; syncMsg='';
+  }catch(e){
+    syncState=navigator.onLine&&!(e.name==='AbortError'||e instanceof TypeError)?'error':'offline';
+    syncMsg=syncState==='error'?e.message:'';
+  }
+  rerenderData();
+}
+
+function fmtTime(iso){ if(!iso) return '未同期'; const d=new Date(iso),n=new Date();
+  const hm=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');
+  return (d.toDateString()===n.toDateString()?'今日 ':(d.getMonth()+1)+'/'+d.getDate()+' ')+hm; }
+function syncHtml(){
+  const cls={idle:'ok',syncing:'',offline:'off',error:'err'}[syncState];
+  const label={idle:'表と同期済み',syncing:'表と同期中…',offline:'電波なし・保存済みのデータを表示中',error:'同期できませんでした'}[syncState];
+  return `<span class="dot ${cls}"></span><span>${label}（最終 ${esc(fmtTime(syncedAt))}）</span>
+    ${outbox.length?`<span class="pend">未送信 ${outbox.length}件</span>`:''}
+    ${syncMsg?`<span class="err">${esc(syncMsg)}</span>`:''}`;
+}
+function paintSync(){ const el=$('#sync'); if(el) el.innerHTML=syncHtml(); }
+function rerenderData(){
+  if(view.page==='list'){ paintSync(); const l=$('#listArea'); if(l) l.innerHTML=listItems(); const c=$('#chips'); if(c) c.innerHTML=chips(); }
+  else if(view.page==='detail') render();
+}
+
+// ===== 画面 =====
+function secret(key,value,label){
+  if(!value) return '<span class="hint">未登録</span>';
+  const show=revealed.has(key);
+  return `<span class="secret"><span class="code ${show?'':'masked'}" aria-label="${esc(label)}">${show?esc(value):'••••'}</span>
+  <button type="button" data-act="reveal" data-key="${esc(key)}">${show?'隠す':'表示'}</button>
+  <button type="button" data-act="copy" data-val="${esc(value)}">コピー</button></span>`;
+}
+
+function render(){
+  const app=$('#app');
+  const p=view.page;
+  app.innerHTML = p==='setup'?setupView() : p==='detail'?detailView(find(view.id)) : p==='edit'?editView(view.id?find(view.id):null) : listView();
+}
+
+function chips(){
+  const cs=[...new Set(rows().map(r=>r.client).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));
+  if(cs.length<2) return '';
+  return [['','すべて'],...cs.map(c=>[c,c])].map(([v,l])=>`<button class="chip ${view.client===v?'on':''}" data-act="client" data-val="${esc(v)}">${esc(l)}</button>`).join('');
+}
+function listItems(){
+  const q=view.q.trim().toLowerCase();
+  const items=rows().filter(r=>(!view.client||r.client===view.client)&&(!q||[r.mansion,r.address,r.client,r.person,r.note].join(' ').toLowerCase().includes(q)))
+    .sort((a,b)=>String(a.mansion).localeCompare(String(b.mansion),'ja'));
+  if(!items.length) return `<div class="empty">${rows().length?'該当するマンションがありません。':(syncedAt?'表にまだ登録がありません。「＋ 追加」から登録してください。':'表からデータを読み込んでいます…')}</div>`;
+  return items.map(r=>`<button class="bcard" data-act="open" data-id="${esc(r.id)}">
+    <span class="name">${esc(r.mansion)||'（名称なし）'}${r._pending?'<span class="pend">未送信</span>':''}</span>
+    <span class="meta">${esc(r.address)||'住所未登録'}</span>
+    <span class="meta">${[r.client,r.person].filter(Boolean).map(esc).join('・')}</span></button>`).join('');
+}
+function listView(){
+  return `<header class="top"><h1><span class="tag">現場</span>キーボックス帳</h1>
+    <div class="row"><button class="ghost" data-act="setup">設定</button><button class="primary" data-act="new">＋ 追加</button></div></header>
+  <div class="row between"><div class="sync" id="sync">${syncHtml()}</div><button class="ghost" data-act="sync">今すぐ同期</button></div>
+  <input class="search" id="q" type="search" placeholder="マンション名・住所・元請け・担当で検索" value="${esc(view.q)}" autocomplete="off">
+  <div class="chips" id="chips">${chips()}</div>
+  <div class="list" id="listArea">${listItems()}</div>`;
+}
+
+function detailView(r){
+  if(!r){view.page='list';return listView();}
+  const map=r.address?` <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(r.address)}" target="_blank" rel="noopener">地図で開く</a>`:'';
+  return `<div class="row"><button class="ghost" data-act="home">← 一覧へ</button></div>
+  <div class="panel">
+    <div class="row between"><h2>${esc(r.mansion)}${r._pending?'<span class="pend">未送信</span>':''}</h2><button data-act="edit" data-id="${esc(r.id)}">編集</button></div>
+    <div class="field"><span class="label">住所</span><span class="text">${esc(r.address)||'<span class="hint">未登録</span>'}${map}</span></div>
+    <div class="field"><span class="label">オートロック番号</span>${secret(r.id+':a',r.autolock,'オートロック番号')}</div>
+    <div class="field"><span class="label">キーボックス暗証番号</span>${secret(r.id+':k',r.keybox,'キーボックス暗証番号')}</div>
+    ${r.note?`<div class="field"><span class="label">備考</span><span class="text">${esc(r.note).replace(/\n/g,'<br>')}</span></div>`:''}
+    <div class="two">
+      <div class="field"><span class="label">元請け</span><span class="text">${esc(r.client)||'—'}</span></div>
+      <div class="field"><span class="label">担当</span><span class="text">${esc(r.person)||'—'}</span></div>
+    </div>
+    <span class="hint">表の最終更新 ${esc(fmtTime(r.updatedAt))}</span>
+  </div>`;
+}
+
+function editView(r){
+  const all=rows();
+  const opts=(k)=>[...new Set(all.map(x=>x[k]).filter(Boolean))].map(v=>`<option value="${esc(v)}">`).join('');
+  return `<div class="row"><button class="ghost" data-act="${r?'open':'home'}" data-id="${esc(r?.id)}">← 戻る</button></div>
+  <div class="panel"><h2>${r?'マンションを編集':'マンションを追加'}</h2>
+  <form id="eForm">
+    <label>マンション名<input id="f-mansion" name="mansion" required value="${esc(r?.mansion)}" placeholder="例：KDXレジデンス南3条"></label>
+    <label>住所<input id="f-address" name="address" value="${esc(r?.address)}" placeholder="例：札幌市中央区南3条西8丁目3-2"></label>
+    <label>オートロック番号<input id="f-autolock" name="autolock" class="mono" value="${esc(r?.autolock)}" autocomplete="off" placeholder="例：※0308呼 / 呼1234"></label>
+    <label>キーボックス暗証番号<input id="f-keybox" name="keybox" class="mono" value="${esc(r?.keybox)}" autocomplete="off" placeholder="例：2525　部屋ごとなら 101:1234 / 203:4471"></label>
+    <div class="two">
+      <label>元請け<input id="f-client" name="client" list="dl-client" value="${esc(r?.client)}"></label>
+      <label>担当<input id="f-person" name="person" list="dl-person" value="${esc(r?.person)}"></label>
+    </div>
+    <datalist id="dl-client">${opts('client')}</datalist><datalist id="dl-person">${opts('person')}</datalist>
+    <label>備考<textarea id="f-note" name="note" rows="3" placeholder="管理人室の場所、駐車、キーボックスの設置場所など">${esc(r?.note)}</textarea></label>
+    <span class="hint">電波がなくても保存できます。つながったときに表へ送ります。</span>
+    <div class="row between">
+      ${r?`<button type="button" class="danger" data-act="del" data-id="${esc(r.id)}">削除</button>`:'<span></span>'}
+      <button class="primary" type="submit">保存</button></div>
+  </form></div>`;
+}
+
+function setupView(){
+  return `<header class="top"><h1><span class="tag">現場</span>キーボックス帳</h1>${conf?'<button class="ghost" data-act="home">閉じる</button>':''}</header>
+  <div class="panel"><h2>Googleスプレッドシートとつなぐ</h2>
+    <ol class="steps">
+      <li>表「暗証番号管理マンション」を開き、「拡張機能」→「Apps Script」を開く</li>
+      <li>配布した <code>gas_code.gs</code> を全部貼り付け、1行目の合言葉を自分で決めた言葉に変えて保存</li>
+      <li>「デプロイ」→「新しいデプロイ」→ 種類「ウェブアプリ」、実行ユーザー「自分」、アクセス「全員」でデプロイし、URLをコピー</li>
+      <li>下にURLと合言葉を入れて「接続」</li>
+    </ol>
+    <form id="sForm">
+      <label>ウェブアプリのURL<input id="s-url" name="url" type="url" required value="${esc(conf?.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <label>合言葉<input id="s-token" name="token" type="password" required value="${esc(conf?.token)}" autocomplete="off"></label>
+      <div class="err" id="s-err" hidden></div>
+      <div class="row between"><span class="hint">この2つはこのiPhoneにだけ保存されます。</span><button class="primary" type="submit" id="s-btn">接続</button></div>
+    </form>
+  </div>`;
+}
+
+// ===== 操作 =====
+function queue(op){ outbox.push(op); put(K_OUT,outbox); sync(); }
+function arm(btn,label,fn){
+  if(btn.classList.contains('armed')){fn();return;}
+  btn.classList.add('armed'); const old=btn.textContent; btn.textContent=label;
+  setTimeout(()=>{btn.classList.remove('armed');btn.textContent=old;},3000);
+}
+async function copy(text){
+  try{await navigator.clipboard.writeText(text);toast('コピーしました');}
+  catch(e){toast('コピーできませんでした。長押しで選択してください');}
+}
+
+document.addEventListener('click',e=>{
+  const el=e.target.closest('[data-act]'); if(!el) return;
+  const a=el.dataset.act, id=el.dataset.id;
+  if(a==='home'){view.page='list';revealed.clear();render();}
+  else if(a==='open'){view.page='detail';view.id=id;revealed.clear();render();window.scrollTo(0,0);}
+  else if(a==='new'){view.page='edit';view.id=null;render();}
+  else if(a==='edit'){view.page='edit';view.id=id;render();}
+  else if(a==='setup'){view.page='setup';render();}
+  else if(a==='sync'){sync().then(()=>{ if(syncState==='idle') toast('最新の状態です'); });}
+  else if(a==='client'){view.client=el.dataset.val;rerenderData();}
+  else if(a==='reveal'){const k=el.dataset.key;
+    if(revealed.has(k)) revealed.delete(k); else {revealed.add(k);clearTimeout(timers[k]);timers[k]=setTimeout(()=>{revealed.delete(k);if(view.page==='detail')render();},15000);}
+    render();}
+  else if(a==='copy'){copy(el.dataset.val);}
+  else if(a==='del'){arm(el,'もう一度押すと削除',()=>{queue({op:'delete',id});toast('削除しました');view.page='list';render();});}
+});
+
+document.addEventListener('input',e=>{ if(e.target.id==='q'){view.q=e.target.value;const l=$('#listArea');if(l)l.innerHTML=listItems();} });
+
+document.addEventListener('submit',async e=>{
+  e.preventDefault(); const f=e.target; const v=n=>(f.elements[n]?.value||'').trim();
+  if(f.id==='eForm'){
+    const old=view.id?find(view.id):null;
+    const rec={id:old?old.id:newId(),client:v('client'),person:v('person'),mansion:v('mansion'),address:v('address'),
+      autolock:v('autolock'),keybox:v('keybox'),note:v('note'),updatedAt:new Date().toISOString()};
+    queue({op:'save',rec}); toast(navigator.onLine?'保存しました':'保存しました（電波が戻ったら表へ送ります）');
+    view.page='detail'; view.id=rec.id; render();
+  } else if(f.id==='sForm'){
+    const btn=$('#s-btn'), err=$('#s-err'); const url=v('url'), token=v('token');
+    if(!/^https:\/\/script\.google\.com\//.test(url)){err.textContent='script.google.com で始まるウェブアプリのURLを入れてください';err.hidden=false;return;}
+    btn.disabled=true; btn.textContent='接続確認中…'; err.hidden=true;
+    const prev=conf; conf={url,token};
+    try{ const j=await api({action:'getAll'}); put(K_CONF,conf); server=j.rows||[]; put(K_CACHE,server);
+      syncedAt=new Date().toISOString(); put(K_SYNC,syncedAt); syncState='idle'; syncMsg='';
+      toast(server.length+'件を読み込みました'); view.page='list'; render(); sync(); }
+    catch(x){ conf=prev; err.textContent=x.message&&!(x instanceof TypeError)&&x.name!=='AbortError'?x.message:'つながりませんでした。URLと、デプロイのアクセスが「全員」になっているかを確認してください';
+      err.hidden=false; btn.disabled=false; btn.textContent='接続'; }
+  }
+});
+
+window.addEventListener('online',()=>sync());
+window.addEventListener('offline',()=>{syncState='offline';paintSync();});
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') sync(); });
+
+render();
+sync();
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist();}catch(e){}
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
+})();
+</script>
+</body>
+</html>
