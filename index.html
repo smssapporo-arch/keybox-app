@@ -57,6 +57,8 @@ button.danger.armed{background:var(--danger);color:var(--panel)}
 .bcard .name{font-weight:700;font-size:1.05rem;overflow-wrap:anywhere}
 .bcard .meta{color:var(--muted);font-size:.8rem;overflow-wrap:anywhere}
 .pend{display:inline-block;font-size:.7rem;padding:0 6px;border-radius:3px;background:var(--accent);color:var(--accent-ink);margin-left:6px;vertical-align:2px;font-weight:700}
+.dist{font-weight:700;color:var(--steel)}
+.sortbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.8rem;color:var(--muted)}
 .empty{padding:28px 16px;text-align:center;color:var(--muted);border:2px dashed var(--line);border-radius:8px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:14px}
 .label{font-size:.72rem;letter-spacing:.1em;color:var(--muted);font-weight:700}
@@ -87,7 +89,7 @@ code{font-family:var(--f-code);background:var(--code-bg);padding:0 4px;border-ra
 <script>
 (function(){
 // ===== 保存キー =====
-const K_CONF='kb-conf', K_CACHE='kb-cache', K_OUT='kb-outbox', K_SYNC='kb-synced';
+const K_CONF='kb-conf', K_CACHE='kb-cache', K_OUT='kb-outbox', K_SYNC='kb-synced', K_GEO='kb-geo', K_POS='kb-pos', K_SORT='kb-sort';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const newId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -102,6 +104,10 @@ let syncState='idle';             // idle | syncing | offline | error
 let syncMsg='';
 let view={page:conf?'list':'setup',id:null,q:'',client:''};
 let revealed=new Set(), timers={};
+let geo=get(K_GEO,{});            // 住所 → [緯度,経度]（見つからない住所は 0）
+let pos=get(K_POS,null);          // 最後に取れた現在地 {lat,lng,at}
+let sortMode=get(K_SORT,'near');  // near | name
+let locState='idle';              // idle | locating | denied | error
 
 // 表の行 + 未送信の変更 = 画面に出すデータ
 function rows(){
@@ -136,7 +142,7 @@ async function doSync(){
       outbox.shift(); put(K_OUT,outbox);
     }
     const j=await api({action:'getAll'});
-    server=j.rows||[]; put(K_CACHE,server);
+    server=j.rows||[]; put(K_CACHE,server); geocodeAll();
     syncedAt=new Date().toISOString(); put(K_SYNC,syncedAt);
     syncState='idle'; syncMsg='';
   }catch(e){
@@ -145,6 +151,53 @@ async function doSync(){
   }
   rerenderData();
 }
+
+// ===== 現在地と距離 =====
+// 住所の位置は国土地理院の住所検索で調べ、この端末に覚えておく（暗証番号は送らない）
+let geocoding=false;
+async function geocodeAll(){
+  if(geocoding||!navigator.onLine) return; geocoding=true;
+  try{
+    const todo=[...new Set(rows().map(r=>(r.address||'').trim()).filter(a=>a&&!(a in geo)))];
+    for(const a of todo){
+      try{
+        const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),10000);
+        const res=await fetch('https://msearch.gsi.go.jp/address-search/AddressSearch?q='+encodeURIComponent(a),{signal:ctl.signal});
+        clearTimeout(t);
+        const j=await res.json(); const c=j&&j[0]&&j[0].geometry&&j[0].geometry.coordinates;
+        geo[a]=c?[c[1],c[0]]:0; put(K_GEO,geo);
+      }catch(e){ break; }               // 電波切れなどは次回に回す
+      await new Promise(r=>setTimeout(r,250));
+    }
+  }finally{ geocoding=false; }
+  rerenderData();
+}
+function locate(){
+  if(!navigator.geolocation||sortMode!=='near') return;
+  locState='locating'; paintSort();
+  navigator.geolocation.getCurrentPosition(p=>{
+    pos={lat:p.coords.latitude,lng:p.coords.longitude,at:Date.now()}; put(K_POS,pos); locState='idle'; rerenderData();
+  },err=>{ locState=err.code===1?'denied':'error'; rerenderData(); },{enableHighAccuracy:false,timeout:15000,maximumAge:60000});
+}
+function distM(r){
+  const c=geo[(r.address||'').trim()]; if(!pos||!c) return null;
+  const R=6371000, rad=Math.PI/180, dLat=(c[0]-pos.lat)*rad, dLng=(c[1]-pos.lng)*rad;
+  const h=Math.sin(dLat/2)**2+Math.cos(pos.lat*rad)*Math.cos(c[0]*rad)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+const fmtDist=m=>m<1000?Math.round(m/10)*10+'m':(m<10000?(m/1000).toFixed(1):Math.round(m/1000))+'km';
+function sortHtml(){
+  const b=(m,l)=>`<button class="chip ${sortMode===m?'on':''}" data-act="sort" data-val="${m}">${l}</button>`;
+  let note='';
+  if(sortMode==='near'){
+    if(locState==='locating') note='現在地を確認中…';
+    else if(locState==='denied') note='位置情報が許可されていません（設定 → プライバシー → 位置情報 → Safari）';
+    else if(locState==='error') note=pos?'現在地を更新できませんでした（前回の位置で表示）':'現在地を取得できませんでした';
+    else if(!pos) note='現在地を確認しています';
+  }
+  return b('near','近い順')+b('name','名前順')+(sortMode==='near'?'<button class="ghost" data-act="locate">現在地を更新</button>':'')+(note?`<span>${esc(note)}</span>`:'');
+}
+function paintSort(){ const el=$('#sortbar'); if(el) el.innerHTML=sortHtml(); }
 
 function fmtTime(iso){ if(!iso) return '未同期'; const d=new Date(iso),n=new Date();
   const hm=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');
@@ -158,7 +211,7 @@ function syncHtml(){
 }
 function paintSync(){ const el=$('#sync'); if(el) el.innerHTML=syncHtml(); }
 function rerenderData(){
-  if(view.page==='list'){ paintSync(); const l=$('#listArea'); if(l) l.innerHTML=listItems(); const c=$('#chips'); if(c) c.innerHTML=chips(); }
+  if(view.page==='list'){ paintSync(); paintSort(); const l=$('#listArea'); if(l) l.innerHTML=listItems(); const c=$('#chips'); if(c) c.innerHTML=chips(); }
   else if(view.page==='detail') render();
 }
 
@@ -185,11 +238,12 @@ function chips(){
 function listItems(){
   const q=view.q.trim().toLowerCase();
   const items=rows().filter(r=>(!view.client||r.client===view.client)&&(!q||[r.mansion,r.address,r.client,r.person,r.note].join(' ').toLowerCase().includes(q)))
-    .sort((a,b)=>String(a.mansion).localeCompare(String(b.mansion),'ja'));
+    .map(r=>({r,d:sortMode==='near'?distM(r):null}))
+    .sort((a,b)=>(a.d==null)-(b.d==null)||(a.d??0)-(b.d??0)||String(a.r.mansion).localeCompare(String(b.r.mansion),'ja'));
   if(!items.length) return `<div class="empty">${rows().length?'該当するマンションがありません。':(syncedAt?'表にまだ登録がありません。「＋ 追加」から登録してください。':'表からデータを読み込んでいます…')}</div>`;
-  return items.map(r=>`<button class="bcard" data-act="open" data-id="${esc(r.id)}">
+  return items.map(({r,d})=>`<button class="bcard" data-act="open" data-id="${esc(r.id)}">
     <span class="name">${esc(r.mansion)||'（名称なし）'}${r._pending?'<span class="pend">未送信</span>':''}</span>
-    <span class="meta">${esc(r.address)||'住所未登録'}</span>
+    <span class="meta">${d!=null?`<span class="dist">${fmtDist(d)}</span>　`:''}${esc(r.address)||'住所未登録'}</span>
     <span class="meta">${[r.client,r.person].filter(Boolean).map(esc).join('・')}</span></button>`).join('');
 }
 function listView(){
@@ -198,6 +252,7 @@ function listView(){
   <div class="row between"><div class="sync" id="sync">${syncHtml()}</div><button class="ghost" data-act="sync">今すぐ同期</button></div>
   <input class="search" id="q" type="search" placeholder="マンション名・住所・元請け・担当で検索" value="${esc(view.q)}" autocomplete="off">
   <div class="chips" id="chips">${chips()}</div>
+  <div class="sortbar" id="sortbar">${sortHtml()}</div>
   <div class="list" id="listArea">${listItems()}</div>`;
 }
 
@@ -281,6 +336,8 @@ document.addEventListener('click',e=>{
   else if(a==='edit'){view.page='edit';view.id=id;render();}
   else if(a==='setup'){view.page='setup';render();}
   else if(a==='sync'){sync().then(()=>{ if(syncState==='idle') toast('最新の状態です'); });}
+  else if(a==='sort'){sortMode=el.dataset.val;put(K_SORT,sortMode);rerenderData();if(sortMode==='near')locate();}
+  else if(a==='locate'){locate();}
   else if(a==='client'){view.client=el.dataset.val;rerenderData();}
   else if(a==='reveal'){const k=el.dataset.key;
     if(revealed.has(k)) revealed.delete(k); else {revealed.add(k);clearTimeout(timers[k]);timers[k]=setTimeout(()=>{revealed.delete(k);if(view.page==='detail')render();},15000);}
@@ -312,12 +369,14 @@ document.addEventListener('submit',async e=>{
   }
 });
 
-window.addEventListener('online',()=>sync());
+window.addEventListener('online',()=>{sync();geocodeAll();});
 window.addEventListener('offline',()=>{syncState='offline';paintSync();});
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') sync(); });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ sync(); locate(); } });
 
 render();
 sync();
+locate();
+geocodeAll();
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist();}catch(e){}
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));}
 })();
