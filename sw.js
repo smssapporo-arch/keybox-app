@@ -1,6 +1,6 @@
 // 起動を速くし、電波がなくても開けるように、アプリ本体を端末にキャッシュする。
 // アプリを更新したら VERSION を上げる。
-const VERSION = 'keybox-v2';
+const VERSION = 'keybox-v3';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
